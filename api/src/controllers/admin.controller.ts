@@ -120,3 +120,28 @@ export async function updateOrderStatus(req: Request, res: Response) {
     res.json(result.rows[0]);
   }catch(err){console.error(err);res.status(500).json({error:'Could not update order'});}
 }
+
+
+export async function userActivity(req: Request, res: Response) {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 500);
+    const userId = req.query.user_id ? String(req.query.user_id) : null;
+    const result = await pool.query(`
+      SELECT al.id, al.actor_user_id AS user_id, u.name AS user_name, u.email, u.role,
+             al.action, al.entity_type, al.entity_id, al.metadata, al.created_at
+      FROM audit_logs al
+      JOIN users u ON u.id=al.actor_user_id
+      WHERE u.role <> 'admin'
+        AND ($1::uuid IS NULL OR al.actor_user_id=$1::uuid)
+      ORDER BY al.created_at DESC
+      LIMIT $2
+    `, [userId, limit]);
+    const summary = await pool.query(`
+      SELECT u.role, COUNT(*)::int AS events
+      FROM audit_logs al JOIN users u ON u.id=al.actor_user_id
+      WHERE u.role <> 'admin' AND ($1::uuid IS NULL OR al.actor_user_id=$1::uuid)
+      GROUP BY u.role ORDER BY events DESC
+    `, [userId]);
+    return res.json({ count: result.rowCount, events: result.rows, summary: summary.rows });
+  } catch (err) { console.error(err); return res.status(500).json({ error: 'Could not load user activity' }); }
+}

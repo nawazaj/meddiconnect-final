@@ -3,6 +3,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/db';
 
+const resetCodes = new Map<string, { code: string; expiresAt: number }>();
+
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
 export async function signup(req: Request, res: Response) {
@@ -57,6 +59,7 @@ export async function signup(req: Request, res: Response) {
     const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, {
       expiresIn: '7d',
     });
+    await pool.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata,ip_address) VALUES($1,'account_created','user',$1,$2::jsonb,$3::inet)`, [user.id, JSON.stringify({ role: user.role }), req.ip]).catch(() => {});
 
     return res.status(201).json({ user, token });
   } catch (err) {
@@ -90,6 +93,8 @@ export async function login(req: Request, res: Response) {
       expiresIn: '7d',
     });
 
+    await pool.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata,ip_address) VALUES($1,'user_login','user',$1,$2::jsonb,$3::inet)`, [user.id, JSON.stringify({ method: 'password' }), req.ip]).catch(() => {});
+
     return res.json({
       user: {
         id: user.id,
@@ -104,4 +109,36 @@ export async function login(req: Request, res: Response) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Something went wrong during login' });
   }
+}
+
+
+export async function forgotPassword(req: Request, res: Response) {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    const result = await pool.query(`SELECT id FROM users WHERE email=$1`, [email]);
+    if (!result.rowCount) return res.status(404).json({ error: 'No account found for that email' });
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    resetCodes.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+    await pool.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES($1,'password_reset_requested','user',$1,$2::jsonb)`, [result.rows[0].id, JSON.stringify({ channel: 'prototype_code' })]).catch(() => {});
+    return res.json({ message: 'Reset code generated', demo_code: code });
+  } catch (err) { console.error(err); return res.status(500).json({ error: 'Could not start password reset' }); }
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const code = String(req.body?.code || '').trim();
+    const newPassword = String(req.body?.new_password || '');
+    if (!email || !code || newPassword.length < 8) return res.status(400).json({ error: 'email, code and a password of at least 8 characters are required' });
+    const saved = resetCodes.get(email);
+    if (!saved || saved.code !== code || saved.expiresAt < Date.now()) return res.status(400).json({ error: 'Invalid or expired reset code' });
+    const user = await pool.query(`SELECT id FROM users WHERE email=$1`, [email]);
+    if (!user.rowCount) return res.status(404).json({ error: 'Account not found' });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE users SET password_hash=$1 WHERE id=$2`, [passwordHash, user.rows[0].id]);
+    resetCodes.delete(email);
+    await pool.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id) VALUES($1,'password_reset_completed','user',$1)`, [user.rows[0].id]).catch(() => {});
+    return res.json({ message: 'Password updated successfully' });
+  } catch (err) { console.error(err); return res.status(500).json({ error: 'Could not reset password' }); }
 }

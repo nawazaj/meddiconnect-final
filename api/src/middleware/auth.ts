@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JwtPayload, UserRole } from '../types';
+import { pool } from '../config/db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
@@ -18,6 +19,11 @@ export function verifyToken(req: Request, res: Response, next: NextFunction) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = decoded;
+    if (!req.path.startsWith('/admin') && !req.path.startsWith('/notifications')) {
+      pool.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,metadata,ip_address) VALUES($1,'api_request','api_request',$2::jsonb,$3::inet)`, [
+        decoded.id, JSON.stringify({ method: req.method, path: req.path, query: req.query, user_agent: req.get('user-agent') || null }), req.ip
+      ]).catch(() => {});
+    }
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
