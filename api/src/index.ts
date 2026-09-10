@@ -34,7 +34,16 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '2mb' }));
-
+// Root endpoint
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'MediConnect API',
+    status: 'online',
+    message: 'MediConnect backend is running successfully 🚀',
+    health: '/health',
+    api: '/api'
+  });
+});
 // API discovery endpoint for frontend integration and demos.
 app.get('/api', (_req, res) => {
   res.json({
