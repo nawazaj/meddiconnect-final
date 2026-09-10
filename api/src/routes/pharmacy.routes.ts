@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { verifyToken, checkRole } from '../middleware/auth';
+import { registerPharmacy, addInventory, searchInventory, createOrder, listOrders, updateOrderStatus } from '../controllers/pharmacy.controller';
+const router = Router();
+router.post('/register', verifyToken, checkRole(['pharmacy']), registerPharmacy);
+router.post('/inventory', verifyToken, checkRole(['pharmacy','admin']), addInventory);
+router.get('/inventory/search', verifyToken, checkRole(['patient','doctor','pharmacy','admin']), searchInventory);
+router.post('/orders', verifyToken, checkRole(['patient']), createOrder);
+router.get('/orders', verifyToken, checkRole(['patient','pharmacy','admin']), listOrders);
+router.patch('/orders/:id/status', verifyToken, checkRole(['pharmacy','admin']), updateOrderStatus);
+export default router;

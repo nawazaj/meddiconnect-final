@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import { verifyToken, checkRole } from '../middleware/auth';
+import { dashboard, listUsers, analytics, auditLogs, systemHealth, operationalQueues, broadcast, updateEmergencyStatus, updateOrderStatus } from '../controllers/admin.controller';
+const router = Router();
+const adminOnly = [verifyToken, checkRole(['admin'])];
+router.get('/dashboard', ...adminOnly, dashboard);
+router.get('/users', ...adminOnly, listUsers);
+router.get('/analytics', ...adminOnly, analytics);
+router.get('/audit-logs', ...adminOnly, auditLogs);
+router.get('/system-health', ...adminOnly, systemHealth);
+router.get('/operations', ...adminOnly, operationalQueues);
+router.post('/broadcast', ...adminOnly, broadcast);
+router.patch('/emergencies/:id/status', ...adminOnly, updateEmergencyStatus);
+router.patch('/orders/:id/status', ...adminOnly, updateOrderStatus);
+export default router;

@@ -1,0 +1,13 @@
+import { Router } from 'express';
+import { verifyToken, checkRole } from '../middleware/auth';
+import { listDoctorApplications, updateDoctorVerification, listConsents, upsertConsent, listDocuments, addDocument } from '../controllers/workflow.controller';
+const router = Router();
+router.get('/doctor-verifications', verifyToken, checkRole(['admin']), listDoctorApplications);
+router.patch('/doctor-verifications/:doctorId', verifyToken, checkRole(['admin']), updateDoctorVerification);
+router.get('/consents', verifyToken, checkRole(['patient']), listConsents);
+router.get('/consents/:patientId', verifyToken, checkRole(['doctor','admin']), listConsents);
+router.post('/consents', verifyToken, checkRole(['patient']), upsertConsent);
+router.get('/documents', verifyToken, checkRole(['patient']), listDocuments);
+router.get('/documents/:patientId', verifyToken, checkRole(['doctor','admin']), listDocuments);
+router.post('/documents', verifyToken, checkRole(['patient','doctor','admin']), addDocument);
+export default router;
